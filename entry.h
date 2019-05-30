@@ -37,6 +37,8 @@ typedef struct KFS_Entry {
   struct KFS_Entry *prev;
   struct timespec atime;
   struct timespec mtime;
+  uid_t uid;
+  gid_t gid;
 } KFS_Entry;
 
 KFS_Entry *make_entry(sds name, int entry_type);

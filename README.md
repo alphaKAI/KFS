@@ -13,6 +13,7 @@ In the future, I want to implement KFS in Kernel land.
 - create
 - unlink
 - utimens
+- chmod
 
 ## Architecture
 

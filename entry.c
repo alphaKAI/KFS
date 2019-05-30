@@ -2,6 +2,8 @@
 #include <stdio.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <sys/types.h>
+#include <unistd.h>
 
 static KFS_File *new_KFS_File_impl(void) {
   KFS_File *file = xmalloc(sizeof(KFS_File));
@@ -42,6 +44,8 @@ KFS_Entry *make_entry(sds name, int entry_type) {
   entry->entry_type = entry_type;
   entry->nlink = 1;
   entry->prev = NULL;
+  entry->uid = getuid();
+  entry->gid = getgid();
 
   clock_getres(CLOCK_REALTIME, &entry->atime);
   clock_getres(CLOCK_REALTIME, &entry->mtime);

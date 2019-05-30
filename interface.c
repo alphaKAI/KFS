@@ -28,7 +28,8 @@ struct fuse_operations kfs_ops = {.getattr = itf_fuse_kfs_getattr,
                                   .access = itf_fuse_kfs_access,
                                   .create = itf_fuse_kfs_create,
                                   .utimens = itf_fuse_kfs_utimens,
-                                  .unlink = itf_fuse_kfs_unlink};
+                                  .unlink = itf_fuse_kfs_unlink,
+                                  .chmod = itf_fuse_kfs_chmod};
 
 void kfs_init(void) {
   KFS_ROOT = new_KFS_Dir(sdsnew("/"));
@@ -86,6 +87,8 @@ int itf_fuse_kfs_getattr(const char *path, struct stat *stbuf) {
     stbuf->st_mode = entry->mode;
     stbuf->st_nlink = entry->nlink;
     stbuf->st_size = entry->size;
+    stbuf->st_uid = entry->uid;
+    stbuf->st_gid = entry->gid;
   }
 
   DEBUG_CODE({
@@ -348,11 +351,30 @@ int itf_fuse_kfs_utimens(const char *path, const struct timespec tv[2]) {
 
   if (entry == NULL) {
     res = -ENOENT;
+  } else {
+    entry->atime = tv[0];
+    entry->mtime = tv[1];
   }
-
-  entry->atime = tv[0];
-  entry->mtime = tv[1];
 
   sdsfree(spath);
   return res;
 }
+
+/** Change the permission bits of a file */
+int itf_fuse_kfs_chmod(const char *path, mode_t mode) {
+  int res = 0;
+  sds spath = sdsnew(path);
+  KFS_Entry *entry = kfs_find(KFS_ROOT, spath);
+
+  if (entry == NULL) {
+    res = -ENOENT;
+  } else {
+    entry->mode = mode | (EntryIsFile(entry) ? S_IFREG : S_IFDIR);
+  }
+
+  sdsfree(spath);
+  return res;
+}
+
+/** Change the owner and group of a file */
+// int (*chown)(const char *, uid_t, gid_t);
