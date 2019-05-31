@@ -7,19 +7,20 @@ void kfs_write(KFS_Entry *this, const char *buf, long int size,
 
   KFS_File *file = GetKFSFile(this);
 
-  if (file->data != NULL && offset == 0) {
-    xfree(&file->data);
-  }
-
-  if (offset) {
-    if (this->size < offset + size) {
+  if(offset) {
+    if(this->size < offset + size) {
       size_t append_size = (offset + size) - this->size;
       file->data = realloc(file->data, this->size + append_size);
       this->size += append_size;
     }
   } else {
-    file->data = xmalloc(size);
-    this->size = size;
+    if(this->size == 0) {
+      file->data = xmalloc(size);
+      this->size = size;
+    } else if(this->size < size) {
+      file->data = realloc(file->data, size);
+      this->size = size;
+    }
   }
   memcpy(file->data + offset, buf, size);
 }
