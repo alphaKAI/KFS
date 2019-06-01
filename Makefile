@@ -3,7 +3,7 @@
 CC := cc
 CFLAGS := -Wextra -Wall -g -lgc $(shell pkg-config fuse --cflags --libs)
 
-TARGET = ksf
+TARGET = kfs
 SRCS = \
 	$(shell find ./ -maxdepth 1 -name "*.c") \
 	$(shell find ./sds -name "*.c")

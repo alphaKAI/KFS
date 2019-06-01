@@ -22,6 +22,8 @@ int itf_fuse_kfs_create(const char *path, mode_t mode,
 int itf_fuse_kfs_utimens(const char *path, const struct timespec tv[2]);
 int itf_fuse_kfs_unlink(const char *path);
 int itf_fuse_kfs_chmod(const char *path, mode_t mode);
+// int (*chown) (const char *, uid_t, gid_t);
+int itf_fuse_kfs_truncate(const char *path, off_t size);
 
 extern struct fuse_operations kfs_ops;
 extern KFS_Entry *KFS_ROOT;
