@@ -46,6 +46,14 @@ void kfs_init(void) {
   */
 }
 
+#define CheckEntryReadPermission(path)                                         \
+  {                                                                            \
+    int access_check = itf_fuse_kfs_access(path, R_OK);                        \
+    if (access_check != 0) {                                                   \
+      return access_check;                                                     \
+    }                                                                          \
+  }
+
 typedef struct {
   KFS_Entry *parent;
   sds lastname;
@@ -116,6 +124,8 @@ int itf_fuse_kfs_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
     }
   });
 
+  CheckEntryReadPermission(path);
+
   int res = 0;
   sds spath = sdsnew(path);
   KFS_Entry *entry = kfs_find(KFS_ROOT, spath);
@@ -145,7 +155,11 @@ int itf_fuse_kfs_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
 }
 
 int itf_fuse_kfs_open(const char *path, struct fuse_file_info *fi) {
-  (void)fi;
+  int access_check = itf_fuse_kfs_access(path, fi->flags);
+  if (access_check != 0) {
+    return access_check;
+  }
+
   int res = 0;
   sds spath = sdsnew(path);
   KFS_Entry *entry = kfs_find(KFS_ROOT, spath);
@@ -170,14 +184,6 @@ int itf_fuse_kfs_open(const char *path, struct fuse_file_info *fi) {
 int itf_fuse_kfs_read(const char *path, char *buf, size_t size, off_t offset,
                       struct fuse_file_info *fi) {
   (void)fi;
-  int access_check = itf_fuse_kfs_access(path, R_OK);
-  if (access_check != 0) {
-    return access_check;
-  }
-
-  int res = 0;
-  sds spath = sdsnew(path);
-  KFS_Entry *entry = kfs_find(KFS_ROOT, spath);
 
   DEBUG_CODE(FILE * fp;);
   DEBUG_CODE({
@@ -187,6 +193,12 @@ int itf_fuse_kfs_read(const char *path, char *buf, size_t size, off_t offset,
       fclose(fp);
     }
   });
+
+  CheckEntryReadPermission(path);
+
+  int res = 0;
+  sds spath = sdsnew(path);
+  KFS_Entry *entry = kfs_find(KFS_ROOT, spath);
 
   if (entry == NULL) {
     res = -ENOENT;
