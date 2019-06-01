@@ -9,9 +9,12 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
-#define DEBUG 1
+#define DEBUG 0
 
 #if DEBUG
+#define USER_HOME_DIR "/home/alphakai/"
+#define KFS_DIR "Nextcloud/kernel_hacking/filesystem/fuse/kfs/"
+#define LOG_OUTPUT_BASE_DIR USER_HOME_DIR KFS_DIR
 #define DEBUG_CODE(code) code
 #else
 #define DEBUG_CODE(code)
@@ -29,7 +32,8 @@ struct fuse_operations kfs_ops = {.getattr = itf_fuse_kfs_getattr,
                                   .create = itf_fuse_kfs_create,
                                   .utimens = itf_fuse_kfs_utimens,
                                   .unlink = itf_fuse_kfs_unlink,
-                                  .chmod = itf_fuse_kfs_chmod};
+                                  .chmod = itf_fuse_kfs_chmod,
+                                  .truncate = itf_fuse_kfs_truncate};
 
 void kfs_init(void) {
   KFS_ROOT = new_KFS_Dir(sdsnew("/"));
@@ -68,9 +72,7 @@ int itf_fuse_kfs_getattr(const char *path, struct stat *stbuf) {
 
   DEBUG_CODE(FILE * fp;);
   DEBUG_CODE({
-    fp = fopen("/home/alphakai/Nextcloud/kernel_hacking/filesystem/fuse/"
-               "kfs/log_getattr",
-               "w");
+    fp = fopen(LOG_OUTPUT_BASE_DIR "log_getattr", "w");
     if (fp) {
       fprintf(fp, "path: %s\n", path);
       fprintf(fp, "spath: %s\n", spath);
@@ -108,9 +110,7 @@ int itf_fuse_kfs_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
 
   DEBUG_CODE(FILE * fp);
   DEBUG_CODE({
-    fp = fopen("/home/alphakai/Nextcloud/kernel_hacking/filesystem/fuse/"
-               "kfs/log_readdir",
-               "w");
+    fp = fopen(LOG_OUTPUT_BASE_DIR "log_readdir", "w");
     if (fp != NULL) {
       fprintf(fp, "path: %s\n", path);
     }
@@ -152,9 +152,7 @@ int itf_fuse_kfs_open(const char *path, struct fuse_file_info *fi) {
 
   DEBUG_CODE(FILE * fp;);
   DEBUG_CODE({
-    fp = fopen("/home/alphakai/Nextcloud/kernel_hacking/"
-               "filesystem/fuse/kfs/log_open",
-               "w");
+    fp = fopen(LOG_OUTPUT_BASE_DIR "log_open", "w");
     if (fp != NULL) {
       fprintf(fp, "path: %s\n", path);
       fclose(fp);
@@ -162,7 +160,7 @@ int itf_fuse_kfs_open(const char *path, struct fuse_file_info *fi) {
   });
 
   if (entry == NULL) {
-    res = -ENONET;
+    res = -ENOENT;
   }
 
   sdsfree(spath);
@@ -172,15 +170,18 @@ int itf_fuse_kfs_open(const char *path, struct fuse_file_info *fi) {
 int itf_fuse_kfs_read(const char *path, char *buf, size_t size, off_t offset,
                       struct fuse_file_info *fi) {
   (void)fi;
+  int access_check = itf_fuse_kfs_access(path, R_OK);
+  if (access_check != 0) {
+    return access_check;
+  }
+
   int res = 0;
   sds spath = sdsnew(path);
   KFS_Entry *entry = kfs_find(KFS_ROOT, spath);
 
   DEBUG_CODE(FILE * fp;);
   DEBUG_CODE({
-    fp = fopen(
-        "/home/alphakai/Nextcloud/kernel_hacking/filesystem/fuse/kfs/log_read",
-        "w");
+    fp = fopen(LOG_OUTPUT_BASE_DIR "log_read", "w");
     if (fp != NULL) {
       fprintf(fp, "path: %s\n", path);
       fclose(fp);
@@ -188,7 +189,7 @@ int itf_fuse_kfs_read(const char *path, char *buf, size_t size, off_t offset,
   });
 
   if (entry == NULL) {
-    res = -ENONET;
+    res = -ENOENT;
   } else {
     SizedData *sdata = kfs_read(entry);
     size_t len = sdata->size;
@@ -211,8 +212,26 @@ int itf_fuse_kfs_read(const char *path, char *buf, size_t size, off_t offset,
 int itf_fuse_kfs_write(const char *path, const char *buf, size_t size,
                        off_t offset, struct fuse_file_info *fi) {
   (void)fi;
-  int res = 0;
   sds spath = sdsnew(path);
+
+  int access_check = itf_fuse_kfs_access(path, W_OK);
+  if (access_check != 0) {
+    if (access_check != -ENOENT) { // fail
+      sdsfree(spath);
+      return access_check;
+    } else {
+      // check parent
+      DownToResult dtr = downToLast(spath);
+      sds parent_path = kfs_getPwd(dtr.parent);
+      access_check = itf_fuse_kfs_access(parent_path, W_OK);
+
+      if (access_check != 0) {
+        return access_check;
+      }
+    }
+  }
+
+  int res = 0;
   KFS_Entry *entry = kfs_find(KFS_ROOT, spath);
 
   if (entry == NULL) {
@@ -235,9 +254,7 @@ int itf_fuse_kfs_mkdir(const char *path, mode_t mode) {
 
   DEBUG_CODE(FILE * fp;);
   DEBUG_CODE({
-    fp = fopen(
-        "/home/alphakai/Nextcloud/kernel_hacking/filesystem/fuse/kfs/log_mkdir",
-        "w");
+    fp = fopen(LOG_OUTPUT_BASE_DIR "log_mkdir", "w");
     if (fp != NULL) {
       fprintf(fp, "path: %s\n", path);
     }
@@ -271,26 +288,68 @@ int itf_fuse_kfs_access(const char *path, int mode) {
 
   DEBUG_CODE(FILE * fp;);
   DEBUG_CODE({
-    fp = fopen("/home/alphakai/Nextcloud/kernel_hacking/filesystem/fuse/"
-               "kfs/log_access",
-               "w");
+    fp = fopen(LOG_OUTPUT_BASE_DIR "log_access", "w");
     if (fp != NULL) {
       fprintf(fp, "path: %s\n", path);
       fclose(fp);
     }
   });
 
-  // TODO: permission check
-  (void)mode;
-
   if (entry == NULL) {
-    res = -ENONET;
+    res = -ENOENT;
+  } else {
+    if (mode == F_OK) {
+      res = 0;
+      goto RETURN;
+    }
+
+    uid_t uid = getuid();
+    gid_t gid = getgid();
+
+    int target;
+
+    if (entry->uid == uid) {
+      // left 3bit
+      target = entry->mode >> 6;
+    } else if (entry->gid == gid) {
+      // middle 3 bit
+      target = (entry->mode & 0b111000) >> 3;
+    } else {
+      // right 3 bit
+      target = (entry->mode & 0b111);
+    }
+
+    if (mode & R_OK) {
+      if ((target & R_OK) == 0) {
+        goto FAIL;
+      }
+    }
+
+    if (mode & W_OK) {
+      if ((target & W_OK) == 0) {
+        goto FAIL;
+      }
+    }
+
+    if (mode & X_OK) {
+      if ((target & X_OK) == 0) {
+        goto FAIL;
+      }
+    }
+
+    goto RETURN;
+
+  FAIL:
+    res = -EACCES;
   }
+
+RETURN:
 
   sdsfree(spath);
   return res;
 }
 
+// TODO: Permission check
 int itf_fuse_kfs_create(const char *path, mode_t mode,
                         struct fuse_file_info *fi) {
   (void)fi;
@@ -300,9 +359,7 @@ int itf_fuse_kfs_create(const char *path, mode_t mode,
 
   DEBUG_CODE(FILE * fp;);
   DEBUG_CODE({
-    fp = fopen("/home/alphakai/Nextcloud/kernel_hacking/filesystem/fuse/"
-               "kfs/log_create",
-               "w");
+    fp = fopen(LOG_OUTPUT_BASE_DIR "log_create", "w");
     if (fp != NULL) {
       fprintf(fp, "path: %s\n", path);
       fclose(fp);
@@ -360,7 +417,6 @@ int itf_fuse_kfs_utimens(const char *path, const struct timespec tv[2]) {
   return res;
 }
 
-/** Change the permission bits of a file */
 int itf_fuse_kfs_chmod(const char *path, mode_t mode) {
   int res = 0;
   sds spath = sdsnew(path);
@@ -376,5 +432,39 @@ int itf_fuse_kfs_chmod(const char *path, mode_t mode) {
   return res;
 }
 
-/** Change the owner and group of a file */
-// int (*chown)(const char *, uid_t, gid_t);
+int itf_fuse_kfs_chown(const char *path, uid_t uid, gid_t gid) {
+  int res = 0;
+  sds spath = sdsnew(path);
+  KFS_Entry *entry = kfs_find(KFS_ROOT, spath);
+
+  if (entry == NULL) {
+    res = -ENOENT;
+  } else {
+    entry->uid = uid;
+    entry->gid = gid;
+  }
+
+  sdsfree(spath);
+  return res;
+}
+
+int itf_fuse_kfs_truncate(const char *path, off_t size) {
+  int res = 0;
+  sds spath = sdsnew(path);
+  KFS_Entry *entry = kfs_find(KFS_ROOT, spath);
+
+  if (entry == NULL) {
+    res = -ENOENT;
+  } else {
+    if (EntryIsFile(entry)) {
+      KFS_File *file = GetKFSFile(entry);
+      file->data = realloc(file->data, size);
+      entry->size = size;
+    } else {
+      res = -EISDIR;
+    }
+  }
+
+  sdsfree(spath);
+  return res;
+}
